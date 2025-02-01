@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Upload
+{% endblock %}
+
+{% block body %}
+<main>
+    <style>
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background-color: var(--primary);
+            color: white;
+            text-decoration: none;
+            border-radius: 0.5rem;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+
+    <form class="resume-upload-form" id="uploadForm" enctype="multipart/form-data" onsubmit="return false;">
+        <h2 class="resume-title">Загрузите ваше резюме</h2>
+        <p class="resume-subtitle">Поддерживаемые форматы: PDF, DOC, DOCX(до 5MB)</p>
+        <div class="upload-zone">
+            <div class="upload-icon">📄</div>
+            <p class="upload-text">Перетащите файл сюда или нажмите для выбора</p>
+            <input type="file" id="resume" name="resume" accept=".pdf, .doc, .docx" style="display: none;" required>
+        </div>
+        <button class="btn upload-btn" type="submit">Загрузить резюме</button>
+    </form>
+
+    {% if vacancies %}
+        <section class="jobs-section">
+            <div class="jobs-header">
+                <h2 class="jobs-found">Подходящие вакансии:</h2>
+                <div>
+                    <div id="filter-root" class="filter-container"></div>
+                </div>
+            </div>
+            {% for vacancy in vacancies %}
+<div class="job-card">
+    <div class="job-info">
+        <h3><a href="{{ vacancy['url'] }}" target="_blank">{{ vacancy['title'] }}</a></h3>
+        <div class="company-info">
+            <div class="company-logo">V</div>
+            <span>
+                <p>{{ vacancy['snippet'] }}</p>
+            </span>
+        </div>
+        <div class="job-tags">
+            {% if vacancy['salary'] %}
+                <span class="tag tag-salary">
+                    {% if vacancy['salary']['from'] %}
+                        от {{ vacancy['salary']['from'] }} ₽
+                    {% endif %}
+                    {% if vacancy['salary']['to'] %}
+                        до {{ vacancy['salary']['to'] }} ₽
+                    {% endif %}
+                </span>
+            {% else %}
+                <span class="tag tag-salary">Зарплата не указана</span>
+            {% endif %}
+            <span class="tag tag-type">{{ vacancy['employment_type'] }}</span>
+        </div>
+    </div>
+    <div class="similarity-score">
+        <strong>Схожесть: </strong> ${similarity ? similarity.toFixed(2) + '%' : 'Не определена'}
+    </div>  <-- ЗАКРЫВАЮЩИЙ </div> ДОБАВЛЕН ЗДЕСЬ!
+    <a href="{{ vacancy['url'] }}" class="btn">Откликнуться</a>  <-- ОДНА КНОПКА "Откликнуться" ПОСЛЕ similarity-score
+</div>
+{% endfor %}
+        </section>
+    {% endif %}
+</main>
+
+<script>
+    const uploadZone = document.querySelector('.upload-zone');
+    const fileInput = document.querySelector('#resume');
+    const uploadForm = document.getElementById('uploadForm');
+    const uploadText = document.querySelector('.upload-text');
+
+    const fileInfoHTML = `
+        <div class="file-info">
+            <span class="file-name"></span>
+            <span class="remove-file">✕</span>
+        </div>
+    `;
+    uploadZone.insertAdjacentHTML('beforeend', fileInfoHTML);
+
+    const fileInfo = document.querySelector('.file-info');
+    const fileName = document.querySelector('.file-name');
+    const removeFileBtn = document.querySelector('.remove-file');
+
+    function updateFileInfo(file) {
+        if (file) {
+            fileName.textContent = file.name;
+            fileInfo.classList.add('visible');
+            uploadZone.classList.add('has-file');
+            uploadText.style.display = 'none';
+        } else {
+            fileInfo.classList.remove('visible');
+            uploadZone.classList.remove('has-file');
+            uploadText.style.display = 'block';
+            fileInput.value = '';
+        }
+    }
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            updateFileInfo(e.target.files[0]);
+        } else {
+            updateFileInfo(null);
+        }
+    });
+
+    removeFileBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        updateFileInfo(null);
+    });
+
+    uploadZone.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.style.borderColor = 'var(--primary)';
+        uploadZone.style.background = '#f8fafc';
+    });
+
+    uploadZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        uploadZone.style.borderColor = '#e5e7eb';
+        uploadZone.style.background = 'white';
+    });
+
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const files = e.dataTransfer.files;
+        if (files.length) {
+            fileInput.files = files;
+            updateFileInfo(files[0]);
+        }
+        uploadZone.style.borderColor = '#e5e7eb';
+        uploadZone.style.background = 'white';
+    });
+
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData();
+        if (fileInput.files.length === 0) {
+            alert('Пожалуйста, выберите файл');
+            return;
+        }
+
+        formData.append('resume', fileInput.files[0]);
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('Response data:', data);
+
+            let jobsSection = document.querySelector('.jobs-section');
+            if (!jobsSection) {
+                jobsSection = document.createElement('section');
+                jobsSection.className = 'jobs-section';
+                uploadForm.after(jobsSection);
+            }
+
+            if (data.vacancies && data.vacancies.length > 0) {
+                const vacanciesHTML = data.vacancies.map(vacancy => {
+                    const similarityScore = vacancy.similarity_score * 100; // Преобразуем в проценты
+
+                    return `
+                        <div class="job-card">
+                            <div class="job-info">
+                                <h3><a href="${vacancy.url}" target="_blank">${vacancy.title}</a></h3>
+                                <div class="company-info">
+                                    <div class="company-logo">V</div>
+                                    <span>
+                                        <p>${vacancy.snippet}</p>
+                                    </span>
+                                </div>
+                                <div class="job-tags">
+                                    <span class="tag tag-salary">
+                                        ${vacancy.salary ?
+                                            `${vacancy.salary.from ? 'от ' + vacancy.salary.from + ' ₽' : ''}
+                                            ${vacancy.salary.to ? 'до ' + vacancy.salary.to + ' ₽' : ''}`
+                                            : 'Зарплата не указана'}
+                                    </span>
+                                    <span class="tag tag-type">${vacancy.employment_type}</span>
+                                </div>
+                            </div>
+                            <div class="similarity-score">
+                                <strong>Схожесть: </strong> ${similarityScore.toFixed(2)}%
+                            </div>
+                            <a href="${vacancy.url}" class="btn" target="_blank">Откликнуться</a>
+                        </div>
+                    `;
+                }).join('');
+
+                jobsSection.innerHTML = `
+                    <div class="jobs-header">
+                        <h2 class="jobs-found">Подходящие вакансии (${data.vacancies.length}):</h2>
+                    </div>
+                    ${vacanciesHTML}
+                `;
+            } else {
+                jobsSection.innerHTML = '<p class="no-vacancies">Подходящих вакансий не найдено</p>';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert(error.message || 'Произошла ошибка при загрузке файла');
+        }
+    });
+</script>
+{% endblock %}
