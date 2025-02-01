@@ -19,6 +19,90 @@
             border: none;
             cursor: pointer;
         }
+
+        .btn:disabled {
+            background-color: #9CA3AF;
+            cursor: not-allowed;
+        }
+
+        .loading-indicator {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            margin: 1rem 0;
+            gap: 0.5rem;
+        }
+
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .loading-text {
+            color: var(--primary);
+            font-weight: 500;
+        }
+
+        .no-vacancies-container {
+            text-align: center;
+            padding: 2rem;
+            background: #f8fafc;
+            border-radius: 0.5rem;
+            margin: 2rem 0;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        .no-vacancies-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: var(--primary);
+        }
+
+        .no-vacancies-title {
+            font-size: 1.5rem;
+            color: #1f2937;
+            margin-bottom: 1rem;
+        }
+
+        .no-vacancies-message {
+            color: #6b7280;
+            margin-bottom: 1.5rem;
+        }
+
+        .suggestions-list {
+            list-style: none;
+            padding: 0;
+            text-align: left;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .suggestions-list li {
+            padding: 0.5rem 0;
+            display: flex;
+            align-items: center;
+            color: #4b5563;
+        }
+
+        .suggestions-list li:before {
+            content: "→";
+            margin-right: 0.5rem;
+            color: var(--primary);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 
     <form class="resume-upload-form" id="uploadForm" enctype="multipart/form-data" onsubmit="return false;">
@@ -29,51 +113,14 @@
             <p class="upload-text">Перетащите файл сюда или нажмите для выбора</p>
             <input type="file" id="resume" name="resume" accept=".pdf, .doc, .docx" style="display: none;" required>
         </div>
-        <button class="btn upload-btn" type="submit">Загрузить резюме</button>
+        <div class="loading-indicator" id="loadingIndicator">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Анализируем ваше резюме...</div>
+        </div>
+        <button class="btn upload-btn" type="submit" id="uploadButton">Загрузить резюме</button>
     </form>
 
-    {% if vacancies %}
-        <section class="jobs-section">
-            <div class="jobs-header">
-                <h2 class="jobs-found">Подходящие вакансии:</h2>
-                <div>
-                    <div id="filter-root" class="filter-container"></div>
-                </div>
-            </div>
-            {% for vacancy in vacancies %}
-<div class="job-card">
-    <div class="job-info">
-        <h3><a href="{{ vacancy['url'] }}" target="_blank">{{ vacancy['title'] }}</a></h3>
-        <div class="company-info">
-            <div class="company-logo">V</div>
-            <span>
-                <p>{{ vacancy['snippet'] }}</p>
-            </span>
-        </div>
-        <div class="job-tags">
-            {% if vacancy['salary'] %}
-                <span class="tag tag-salary">
-                    {% if vacancy['salary']['from'] %}
-                        от {{ vacancy['salary']['from'] }} ₽
-                    {% endif %}
-                    {% if vacancy['salary']['to'] %}
-                        до {{ vacancy['salary']['to'] }} ₽
-                    {% endif %}
-                </span>
-            {% else %}
-                <span class="tag tag-salary">Зарплата не указана</span>
-            {% endif %}
-            <span class="tag tag-type">{{ vacancy['employment_type'] }}</span>
-        </div>
-    </div>
-    <div class="similarity-score">
-        <strong>Схожесть: </strong> ${similarity ? similarity.toFixed(2) + '%' : 'Не определена'}
-    </div>  <-- ЗАКРЫВАЮЩИЙ </div> ДОБАВЛЕН ЗДЕСЬ!
-    <a href="{{ vacancy['url'] }}" class="btn">Откликнуться</a>  <-- ОДНА КНОПКА "Откликнуться" ПОСЛЕ similarity-score
-</div>
-{% endfor %}
-        </section>
-    {% endif %}
+    <div id="resultsContainer"></div>
 </main>
 
 <script>
@@ -81,6 +128,9 @@
     const fileInput = document.querySelector('#resume');
     const uploadForm = document.getElementById('uploadForm');
     const uploadText = document.querySelector('.upload-text');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const uploadButton = document.getElementById('uploadButton');
+    const resultsContainer = document.getElementById('resultsContainer');
 
     const fileInfoHTML = `
         <div class="file-info">
@@ -148,6 +198,34 @@
         uploadZone.style.background = 'white';
     });
 
+    function showLoading() {
+        loadingIndicator.style.display = 'flex';
+        uploadButton.disabled = true;
+        uploadButton.textContent = 'Загрузка...';
+    }
+
+    function hideLoading() {
+        loadingIndicator.style.display = 'none';
+        uploadButton.disabled = false;
+        uploadButton.textContent = 'Загрузить резюме';
+    }
+
+    function showNoVacancies() {
+        const noVacanciesHTML = `
+            <div class="no-vacancies-container">
+                <div class="no-vacancies-icon">🔍</div>
+                <h3 class="no-vacancies-title">Вакансии не найдены</h3>
+                <p class="no-vacancies-message">К сожалению, мы не смогли найти подходящие вакансии по вашему резюме.</p>
+                <ul class="suggestions-list">
+                    <li>Попробуйте расширить область поиска</li>
+                    <li>Рассмотрите смежные позиции</li>
+                    <li>Проверьте позже наличие новых вакансий</li>
+                </ul>
+            </div>
+        `;
+        resultsContainer.innerHTML = noVacanciesHTML;
+    }
+
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -158,6 +236,7 @@
         }
 
         formData.append('resume', fileInput.files[0]);
+        showLoading();
 
         try {
             const response = await fetch('/upload', {
@@ -165,65 +244,72 @@
                 body: formData
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-            }
-
             const data = await response.json();
-            console.log('Response data:', data);
-
-            let jobsSection = document.querySelector('.jobs-section');
-            if (!jobsSection) {
-                jobsSection = document.createElement('section');
-                jobsSection.className = 'jobs-section';
-                uploadForm.after(jobsSection);
+            
+            if (!response.ok) {
+                throw new Error(data.error || `HTTP error! status: ${response.status}`);
             }
 
-            if (data.vacancies && data.vacancies.length > 0) {
-                const vacanciesHTML = data.vacancies.map(vacancy => {
-                    const similarityScore = vacancy.similarity_score * 100; // Преобразуем в проценты
+            if (!data.vacancies || data.vacancies.length === 0) {
+                showNoVacancies();
+                return;
+            }
 
-                    return `
-                        <div class="job-card">
-                            <div class="job-info">
-                                <h3><a href="${vacancy.url}" target="_blank">${vacancy.title}</a></h3>
-                                <div class="company-info">
-                                    <div class="company-logo">V</div>
-                                    <span>
-                                        <p>${vacancy.snippet}</p>
-                                    </span>
-                                </div>
-                                <div class="job-tags">
-                                    <span class="tag tag-salary">
-                                        ${vacancy.salary ?
-                                            `${vacancy.salary.from ? 'от ' + vacancy.salary.from + ' ₽' : ''}
-                                            ${vacancy.salary.to ? 'до ' + vacancy.salary.to + ' ₽' : ''}`
-                                            : 'Зарплата не указана'}
-                                    </span>
-                                    <span class="tag tag-type">${vacancy.employment_type}</span>
-                                </div>
+            // Display vacancies
+            const vacanciesHTML = data.vacancies.map(vacancy => {
+                const similarityScore = vacancy.similarity_score * 100;
+                return `
+                    <div class="job-card">
+                        <div class="job-info">
+                            <h3><a href="${vacancy.url}" target="_blank">${vacancy.title}</a></h3>
+                            <div class="company-info">
+                                <div class="company-logo">${
+                                    vacancy.company_name ? 
+                                    vacancy.company_name.charAt(0).toUpperCase() : 
+                                    vacancy.title.charAt(0).toUpperCase()
+                                }</div>
+                                <span>
+                                    <p>${vacancy.snippet}</p>
+                                </span>
                             </div>
-                            <div class="similarity-score">
-                                <strong>Схожесть: </strong> ${similarityScore.toFixed(2)}%
+                            <div class="job-tags">
+                                <span class="tag tag-salary">
+                                    ${vacancy.salary ?
+                                        `${vacancy.salary.from ? 'от ' + vacancy.salary.from + ' ₽' : ''}
+                                        ${vacancy.salary.to ? 'до ' + vacancy.salary.to + ' ₽' : ''}`
+                                        : 'Зарплата не указана'}
+                                </span>
+                                <span class="tag tag-type">${vacancy.employment_type}</span>
                             </div>
-                            <a href="${vacancy.url}" class="btn" target="_blank">Откликнуться</a>
                         </div>
-                    `;
-                }).join('');
+                        <div class="similarity-score">
+                            <strong>Схожесть: </strong> ${similarityScore.toFixed(2)}%
+                        </div>
+                        <a href="${vacancy.url}" class="btn" target="_blank">Откликнуться</a>
+                    </div>
+                `;
+            }).join('');
 
-                jobsSection.innerHTML = `
+            resultsContainer.innerHTML = `
+                <section class="jobs-section">
                     <div class="jobs-header">
                         <h2 class="jobs-found">Подходящие вакансии (${data.vacancies.length}):</h2>
                     </div>
                     ${vacanciesHTML}
-                `;
-            } else {
-                jobsSection.innerHTML = '<p class="no-vacancies">Подходящих вакансий не найдено</p>';
-            }
+                </section>
+            `;
+
         } catch (error) {
             console.error('Error:', error);
-            alert(error.message || 'Произошла ошибка при загрузке файла');
+            resultsContainer.innerHTML = `
+                <div class="no-vacancies-container">
+                    <div class="no-vacancies-icon">⚠️</div>
+                    <h3 class="no-vacancies-title">Произошла ошибка</h3>
+                    <p class="no-vacancies-message">${error.message}</p>
+                </div>
+            `;
+        } finally {
+            hideLoading();
         }
     });
 </script>
