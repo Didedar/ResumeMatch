@@ -103,7 +103,7 @@ uploads_dir = os.path.join(os.getcwd(), "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
 app.config["UPLOADS_FOLDER"] = uploads_dir
 
-logging.basicConfig(level=logging.DEBUG) # <--- УСТАНОВИТЕ DEBUG
+logging.basicConfig(level=logging.DEBUG) 
 logger = logging.getLogger(__name__)
 
 @app.errorhandler(RequestEntityTooLarge)
@@ -188,7 +188,6 @@ def compare_texts_with_gemini(resume_text, vacancy_texts):
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-1.5-flash')
 
-        # Объединяем тексты вакансий для отправки в одном запросе
         vacancies_text_block = "\n\n".join([
             f"Вакансия {i+1}:\n{vacancy_text}"
             for i, vacancy_text in enumerate(vacancy_texts)
@@ -260,25 +259,21 @@ def compare_texts_with_gemini(resume_text, vacancy_texts):
                 response_text = response_text[:-1]
 
             result = json.loads(response_text)
-            for i in range(1, len(vacancy_texts) + 1): # Итерируем по вакансиям
+            for i in range(1, len(vacancy_texts) + 1): 
                 vacancy_key = f"Vacancy {i}"
-                if vacancy_key in result and 'similarity_score' in result[vacancy_key]: # Проверяем наличие ключей
-                    similarity_scores[vacancy_key] = {'similarity_score': result[vacancy_key]['similarity_score']} # Сохраняем только score
+                if vacancy_key in result and 'similarity_score' in result[vacancy_key]: 
+                    similarity_scores[vacancy_key] = {'similarity_score': result[vacancy_key]['similarity_score']} 
                 else:
                     logger.warning(f"В ответе от Gemini API для вакансии {i} не найден ключ 'similarity_score' или 'Vacancy {i}'. Установлено значение по умолчанию 0.0")
-                    similarity_scores[vacancy_key] = {'similarity_score': 0.0} # Дефолтное значение score
+                    similarity_scores[vacancy_key] = {'similarity_score': 0.0} 
         except json.JSONDecodeError as e:
-            # ...
-            # В случае ошибки парсинга, возвращаем пустые scores для всех вакансий
             for i in range(len(vacancy_texts)):
-                similarity_scores[f"Vacancy {i+1}"] = {'similarity_score': 0.0} # <--- ИСПРАВЛЕНО: 'reason' удален
+                similarity_scores[f"Vacancy {i+1}"] = {'similarity_score': 0.0} 
 
-        # ...
-
-        for i in range(1, len(vacancy_texts) + 1): # Итерируем по вакансиям
+        for i in range(1, len(vacancy_texts) + 1):
             vacancy_key = f"Vacancy {i}"
-            if vacancy_key in result and 'similarity_score' in result[vacancy_key]: # Проверяем наличие ключей
-                similarity_scores[vacancy_key] = {'similarity_score': result[vacancy_key]['similarity_score']} # Сохраняем только score
+            if vacancy_key in result and 'similarity_score' in result[vacancy_key]: 
+                similarity_scores[vacancy_key] = {'similarity_score': result[vacancy_key]['similarity_score']}
             else:
                 logger.warning(f"В ответе от Gemini API для вакансии {i} не найден ключ 'similarity_score' или 'Vacancy {i}'. Установлено значение по умолчанию 0.0")
                 similarity_scores[vacancy_key] = {'similarity_score': 0.0}
@@ -293,7 +288,6 @@ def search_vacancies(profession, top_n=100):
     """
     Поиск вакансий по определенной профессии
     """
-    # Ensure top_n is an integer
     if isinstance(top_n, list):
         top_n = top_n[0] if top_n else 10
     
@@ -308,8 +302,8 @@ def search_vacancies(profession, top_n=100):
     params = {
         "per_page": per_page,
         "area": 40,
-        "text": profession.get('profession_ru', ''),  # Используем русское название профессии для поиска
-        "search_field": "name"  # Ищем в названии вакансии
+        "text": profession.get('profession_ru', ''),  
+        "search_field": "name"  
     }
 
     try:
@@ -388,8 +382,7 @@ def upload():
 
             try:
                 file.save(file_path)
-
-                # Извлекаем текст из файла
+                
                 if file.filename.endswith('.pdf'):
                     text, error = pdf_handler.extract_text_from_pdf(file_path)
                     if error:
@@ -403,12 +396,10 @@ def upload():
                     except Exception as e:
                         return jsonify({"error": f"Error processing document: {str(e)}"}), 400
 
-                # Определяем профессию
                 profession = detect_profession(text)
                 if not profession:
                     return jsonify({"error": "Could not detect profession from resume"}), 400
 
-                # Ищем вакансии по профессии
                 vacancies = search_vacancies(profession)
                 if not vacancies:
                     return jsonify({
@@ -424,7 +415,6 @@ def upload():
                 vacancy_texts = [f"{v['title']} {v['snippet']}" for v in limited_vacancies]
                 similarity_scores = compare_texts_with_gemini(text, vacancy_texts)
                 
-                # Добавляем scores к вакансиям и сортируем
                 vacancy_list = []
                 
                 for i, vacancy in enumerate(limited_vacancies):
@@ -448,7 +438,6 @@ def upload():
                     reverse=True
                 )
 
-                # Возвращаем и профессию, и вакансии, и scores в одном объекте
                 return jsonify({
                     "profession": profession,
                     "vacancies": sorted_vacancies,
